@@ -10,9 +10,9 @@
 
 /*
 TODO: 
-lock, unlock - DONE
-pthread_join
-semaphores
+lock, unlock - DONE - put in the right places
+pthread_join - DONE ???
+semaphores 
 */
 
 int i;  // iteration variable
@@ -62,6 +62,14 @@ static void thread_init(void) {
     ualarm(QUOTA, QUOTA);
     ++thread_count;
 }
+
+int sem_init(sem_t *sem, int pshared, unsigned value) {}
+
+int sem_wait(sem_t *sem) {}
+
+int sem_post(sem_t *sem) {}
+
+int sem_destroy(sem_t *sem) {}
 
 void scheduler(int signum) {
     // TODO: where to put lock in scheduler?
