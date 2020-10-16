@@ -64,6 +64,7 @@ static void thread_init(void) {
 }
 
 void scheduler(int signum) {
+    // TODO: where to put lock in scheduler?
     if (!setjmp(current->buf)) {
         do {
             if (current->status == BLOCKED && traverse(current->dep)->status == EXITED)  // current blocked but dependency has finished - CONTINUE RUNNING NOW
@@ -115,11 +116,11 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 }
 
 void pthread_exit(void *value_ptr) {
+    lock();
     current->status = EXITED;
-    current->exit_code = value_ptr;  // save the return value for pthread_join
-
-    // TODO: free all resources beside exit value - collected in pthread_join
-    free(current->stack - STACKSIZE + 8);
+    current->exit_code = value_ptr;        // save the return value for pthread_join
+    free(current->stack - STACKSIZE + 8);  // TODO: free all TCB resources beside exit value - collected in pthread_join
+    unlock();
 
     scheduler(SIGALRM);
     __builtin_unreachable();
@@ -145,21 +146,24 @@ void unlock(void) {
 
 int pthread_join(pthread_t thread, void **value_ptr) {
     // postpone execution of calling thread till target thread terminates
-    // thread should be numerically away from head - just need to move up by that many in doubly linked list
-
-    if (!value_ptr) {
-        perror("NULL value_ptr");
-        exit(1);
-    }
+    // thread should be numerically away from head - just need to move up by that many in doubly linked list - traverse()
+    // IT WORKS - PTHREAD_JOIN isn't called again by the same thread until the last call returns. Therefore a list of dependencies doesn't build up - more like a mailbox
 
     ante = traverse((unsigned)thread);
 
+    // printf("BLOCKING THREAD %d TILL THREAD %d is complete\n", (unsigned)current->id, (unsigned)ante->id);
+
     if (ante->status == EXITED) {  // thread to join has exited
-        *value_ptr = ante->exit_code;
+        value_ptr = &ante->exit_code;
         return 0;  // TODO: 0=successful - otherwise choose and return error values
     } else {       // ante may be READY - can't be RUNNING - may be BLOCKED itself
+        lock();
         current->dep = thread;
         current->status = BLOCKED;
+        unlock();
         scheduler(SIGALRM);
     }
+
+    // use __builtin_unreachable() since might go to scheduler?
+    return 0;
 }
