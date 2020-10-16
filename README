@@ -1,2 +1,12 @@
-Changes from HW2:
-- removed decrement thread - threads are now globally unique once declared - ids are no longer reused
+Updates from HW2:
+- removed decrement thread - threads are now globally unique once declared - ids no longer reused
+    - does 128 MAX threads mean concurrent running threads or total declared threads?
+
+
+[Sources]
+
+manpages, Lectures
+
+sigprocmask:
+https://man7.org/linux/man-pages/man2/sigprocmask.2.html
+https://www.linuxprogrammingblog.com/code-examples/blocking-signals-with-sigprocmask

@@ -22,6 +22,7 @@ typedef enum State {
     RUNNING,
     READY,
     EXITED,
+    BLOCKED,
 } State;
 
 typedef struct TCB {
@@ -31,6 +32,7 @@ typedef struct TCB {
     State state;
     struct TCB *next;
     struct TCB *prev;
+    void *exit_code;
 } TCB;
 
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void *), void *arg);
@@ -40,12 +42,12 @@ void scheduler(int signum);
 
 void lock(void);
 void unlock(void);
+
 int pthread_join(pthread_t thread, void **value_ptr);
 
 // int sem_init(sem_t *sem, int pshared, unsigned value);
 // int sem_wait(sem_t *sem);
 // int sem_post(sem_t *sem);
 // int sem_destroy(sem_t *sem);
-
 
 #endif /* THREADS_H */
