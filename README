@@ -1,0 +1,2 @@
+Changes from HW2:
+- removed decrement thread - threads are now globally unique once declared - ids are no longer reused
