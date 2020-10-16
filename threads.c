@@ -1,7 +1,6 @@
 #include "threads.h"
 
 #include <signal.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,24 +15,18 @@ pthread_join
 semaphores
 */
 
-
+int i;  // iteration variable
 int thread_count = 0;
 TCB *head = NULL;
 TCB *current = NULL;
-
+TCB *ante = NULL;
 sigset_t mask;  // sigmask to hide SIGALRM when locking a thread
-sigemptyset(&mask);
 
-void scheduler(int signum) {
-    if (!setjmp(current->buf)) {
-        do {
-            if (current->state == RUNNING)
-                current->state = READY;
-            current = current->next;
-        } while (current->state == EXITED);
-        current->state = RUNNING;
-        longjmp(current->buf, 1);
-    }
+static TCB *traverse(int n) {
+    TCB *temp = head;
+    for (i = 0; i < n; ++i)
+        temp = temp->next;
+    return temp;
 }
 
 static void pthread_exit_wrapper() {
@@ -51,7 +44,7 @@ static void thread_init(void) {
     current = mt;
     mt->next = mt;
     mt->prev = mt;
-    mt->state = RUNNING;
+    mt->status = RUNNING;
     mt->id = (pthread_t)thread_count;
     mt->exit_code = NULL;
 
@@ -70,6 +63,21 @@ static void thread_init(void) {
     ++thread_count;
 }
 
+void scheduler(int signum) {
+    if (!setjmp(current->buf)) {
+        do {
+            if (current->status == BLOCKED && traverse(current->dep)->status == EXITED)  // current blocked but dependency has finished - CONTINUE RUNNING NOW
+                break;
+            if (current->status == RUNNING)
+                current->status = READY;
+            current = current->next;
+        } while (current->status == EXITED || current->status == BLOCKED);
+
+        current->status = RUNNING;
+        longjmp(current->buf, 1);
+    }
+}
+
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void *), void *arg) {
     if (!thread_count)
         thread_init();
@@ -85,8 +93,10 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
     head->prev->next = new_thread;
     head->prev = new_thread;
     new_thread->next = head;
-    new_thread->state = READY;
+    new_thread->status = READY;
     new_thread->id = (pthread_t)thread_count;
+    *thread = (pthread_t)thread_count;  // write to arg thread - used in pthread_join
+
     new_thread->exit_code = NULL;
 
     setjmp(new_thread->buf);
@@ -105,10 +115,11 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 }
 
 void pthread_exit(void *value_ptr) {
-    current->state = EXITED;
-    current->exit_code = value_ptr;  // save the return value for later - in pthread_join
-   
-    // TODO: free all resources once exit value is collected in pthread_join
+    current->status = EXITED;
+    current->exit_code = value_ptr;  // save the return value for pthread_join
+
+    // TODO: free all resources beside exit value - collected in pthread_join
+    free(current->stack - STACKSIZE + 8);
 
     scheduler(SIGALRM);
     __builtin_unreachable();
@@ -117,6 +128,7 @@ void pthread_exit(void *value_ptr) {
 pthread_t pthread_self(void) { return current->id; }
 
 void lock(void) {  // needs to be called to protect accesses to global data structures
+    sigemptyset(&mask);
     sigaddset(&mask, SIGALRM);
     if (sigprocmask(SIG_BLOCK, &mask, NULL) < 0) {
         perror("sigprocmask");
@@ -133,7 +145,21 @@ void unlock(void) {
 
 int pthread_join(pthread_t thread, void **value_ptr) {
     // postpone execution of calling thread till target thread terminates
-    // does only main(head) call pthread_join? - can add a bitmask of the different threads that it's waiting for
+    // thread should be numerically away from head - just need to move up by that many in doubly linked list
 
-    // put return value from pthread_exit into value ptr
+    if (!value_ptr) {
+        perror("NULL value_ptr");
+        exit(1);
+    }
+
+    ante = traverse((unsigned)thread);
+
+    if (ante->status == EXITED) {  // thread to join has exited
+        *value_ptr = ante->exit_code;
+        return 0;  // TODO: 0=successful - otherwise choose and return error values
+    } else {       // ante may be READY - can't be RUNNING - may be BLOCKED itself
+        current->dep = thread;
+        current->status = BLOCKED;
+        scheduler(SIGALRM);
+    }
 }

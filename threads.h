@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <setjmp.h>
+#include <stdbool.h>
 
 #define QUOTA 50000
 #define STACKSIZE 32767
@@ -29,10 +30,11 @@ typedef struct TCB {
     pthread_t id;
     jmp_buf buf;
     void *stack;
-    State state;
+    State status;
     struct TCB *next;
     struct TCB *prev;
-    void *exit_code;
+    void *exit_code;  // return value in pthread_exit
+    pthread_t dep;    // thread join dependency
 } TCB;
 
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void *), void *arg);
