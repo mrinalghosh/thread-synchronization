@@ -22,6 +22,8 @@ TCB *current = NULL;
 TCB *ante = NULL;
 sigset_t mask;  // sigmask to hide SIGALRM when locking a thread
 
+// static void hline(void) { printf("----------8<-------------[ cut here ]----------\n"); }
+
 static TCB *traverse(int n) {
     TCB *temp = head;
     for (i = 0; i < n; ++i)
@@ -47,6 +49,7 @@ static void thread_init(void) {
     mt->status = RUNNING;
     mt->id = (pthread_t)thread_count;
     mt->exit_code = NULL;
+    mt->exit_addr = NULL;
 
     setjmp(mt->buf);
 
@@ -63,20 +66,29 @@ static void thread_init(void) {
     ++thread_count;
 }
 
-int sem_init(sem_t *sem, int pshared, unsigned value) {}
+// int sem_init(sem_t *sem, int pshared, unsigned value) {}
 
-int sem_wait(sem_t *sem) {}
+// int sem_wait(sem_t *sem) {}
 
-int sem_post(sem_t *sem) {}
+// int sem_post(sem_t *sem) {}
 
-int sem_destroy(sem_t *sem) {}
+// int sem_destroy(sem_t *sem) {}
 
 void scheduler(int signum) {
-    // TODO: where to put lock in scheduler?
+    // hline();
+
+    lock();  // TODO: where to put lock in scheduler?
     if (!setjmp(current->buf)) {
         do {
-            if (current->status == BLOCKED && traverse(current->dep)->status == EXITED)  // current blocked but dependency has finished - CONTINUE RUNNING NOW
+            if (current->status == BLOCKED && traverse(current->dep)->status == EXITED) {
+                // current blocked but dependency has finished - CONTINUE RUNNING NOW
+
+                // current->value_ptr = &traverse(current->dep)->exit_code;
+                current->value_ptr = traverse(current->dep)->exit_addr;
+                // printf("EXIT CODE ADDRESS FOR THREAD %d: %p\n", (unsigned)traverse(current->dep)->id, &traverse(current->dep)->exit_code);
+                // printf("EXIT CODE ADDRESS FOR THREAD %d: %p\n", (unsigned)traverse(current->dep)->id, traverse(current->dep)->exit_addr);
                 break;
+            }
             if (current->status == RUNNING)
                 current->status = READY;
             current = current->next;
@@ -85,6 +97,7 @@ void scheduler(int signum) {
         current->status = RUNNING;
         longjmp(current->buf, 1);
     }
+    unlock();
 }
 
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void *), void *arg) {
@@ -107,6 +120,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
     *thread = (pthread_t)thread_count;  // write to arg thread - used in pthread_join
 
     new_thread->exit_code = NULL;
+    new_thread->exit_addr = NULL;
 
     setjmp(new_thread->buf);
 
@@ -126,7 +140,9 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 void pthread_exit(void *value_ptr) {
     lock();
     current->status = EXITED;
-    current->exit_code = value_ptr;        // save the return value for pthread_join
+    // THIS IS WRONG - RETURNS ADDRESS IN NEWLY ALLOCATED TCB
+    // current->exit_code = value_ptr;        // save the return value for pthread_join
+    current->exit_addr = &value_ptr;
     free(current->stack - STACKSIZE + 8);  // TODO: free all TCB resources beside exit value - collected in pthread_join
     unlock();
 
@@ -162,11 +178,16 @@ int pthread_join(pthread_t thread, void **value_ptr) {
     // printf("BLOCKING THREAD %d TILL THREAD %d is complete\n", (unsigned)current->id, (unsigned)ante->id);
 
     if (ante->status == EXITED) {  // thread to join has exited
-        value_ptr = &ante->exit_code;
+        // value_ptr = &ante->exit_code;
+        value_ptr = ante->exit_addr;
+        // printf("EXIT CODE ADDRESS FOR THREAD %d: %p\n", (unsigned)ante->id, ante->exit_code);
+        // printf("EXIT CODE ADDRESS FOR THREAD %d: %p\n", (unsigned)ante->id, *ante->exit_addr);
+
         return 0;  // TODO: 0=successful - otherwise choose and return error values
     } else {       // ante may be READY - can't be RUNNING - may be BLOCKED itself
         lock();
         current->dep = thread;
+        current->value_ptr = value_ptr;  // store for later
         current->status = BLOCKED;
         unlock();
         scheduler(SIGALRM);

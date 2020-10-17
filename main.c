@@ -3,7 +3,7 @@
 
 #include "threads.h"
 
-#define THREAD_CNT 3
+#define THREAD_CNT 4
 
 // waste some time
 void *count(void *arg) {

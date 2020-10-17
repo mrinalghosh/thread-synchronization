@@ -34,7 +34,9 @@ typedef struct TCB {
     struct TCB *next;
     struct TCB *prev;
     void *exit_code;  // return value in pthread_exit
-    pthread_t dep;    // thread join dependency
+    void **exit_addr;
+    pthread_t dep;  // thread join dependency
+    void **value_ptr;
 } TCB;
 
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void *), void *arg);
@@ -47,9 +49,9 @@ void unlock(void);
 
 int pthread_join(pthread_t thread, void **value_ptr);
 
-int sem_init(sem_t *sem, int pshared, unsigned value);
-int sem_wait(sem_t *sem);
-int sem_post(sem_t *sem);
-int sem_destroy(sem_t *sem);
+// int sem_init(sem_t *sem, int pshared, unsigned value);
+// int sem_wait(sem_t *sem);
+// int sem_post(sem_t *sem);
+// int sem_destroy(sem_t *sem);
 
 #endif /* THREADS_H */
