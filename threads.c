@@ -84,7 +84,7 @@ void scheduler(int signum) {
                 // current blocked but dependency has finished - CONTINUE RUNNING NOW
 
                 // current->value_ptr = &traverse(current->dep)->exit_code;
-                current->value_ptr = traverse(current->dep)->exit_addr;
+                *(current->value_ptr) = *(traverse(current->dep)->exit_addr);
                 // printf("EXIT CODE ADDRESS FOR THREAD %d: %p\n", (unsigned)traverse(current->dep)->id, &traverse(current->dep)->exit_code);
                 // printf("EXIT CODE ADDRESS FOR THREAD %d: %p\n", (unsigned)traverse(current->dep)->id, traverse(current->dep)->exit_addr);
                 break;
@@ -179,7 +179,7 @@ int pthread_join(pthread_t thread, void **value_ptr) {
 
     if (ante->status == EXITED) {  // thread to join has exited
         // value_ptr = &ante->exit_code;
-        value_ptr = ante->exit_addr;
+        *value_ptr = *(ante->exit_addr);
         // printf("EXIT CODE ADDRESS FOR THREAD %d: %p\n", (unsigned)ante->id, ante->exit_code);
         // printf("EXIT CODE ADDRESS FOR THREAD %d: %p\n", (unsigned)ante->id, *ante->exit_addr);
 
