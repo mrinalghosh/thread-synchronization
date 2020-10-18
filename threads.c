@@ -11,16 +11,15 @@
 /*
 TODO: 
 lock, unlock - DONE - put in the right places
-pthread_join - DONE ???
-semaphores 
+pthread_join - DONE 
+semaphores -    
 */
 
 int i;  // iteration variable
 int thread_count = 0;
 TCB *head = NULL;
 TCB *current = NULL;
-TCB *ante = NULL;
-sigset_t mask;  // sigmask to hide SIGALRM when locking a thread
+sigset_t mask;
 
 // static void hline(void) { printf("----------8<-------------[ cut here ]----------\n"); }
 
@@ -32,7 +31,6 @@ static TCB *traverse(int n) {
 }
 
 static void pthread_exit_wrapper() {
-    /* load return value of thread's start function -> res variable -> call pthread_exit */
     unsigned long int res;
     asm("movq %%rax, %0\n"
         : "=r"(res));
@@ -66,37 +64,44 @@ static void thread_init(void) {
     ++thread_count;
 }
 
-// int sem_init(sem_t *sem, int pshared, unsigned value) {}
+int sem_init(sem_t *sem, int pshared, unsigned value) {
+    // pshared const 0
+    semaphore *ns = (semaphore *)calloc(sizeof(semaphore));
+    ns->value = value;
+    ns->queue = NULL;
+    ns->init = true;
+    sem->__align = (long)ns;
+    return 0;  // if successful
+}
 
-// int sem_wait(sem_t *sem) {}
+int sem_wait(sem_t *sem) {}
 
-// int sem_post(sem_t *sem) {}
+int sem_post(sem_t *sem) {}
 
-// int sem_destroy(sem_t *sem) {}
+int sem_destroy(sem_t *sem) {}
 
 void scheduler(int signum) {
     // hline();
+    lock();
 
-    lock();  // TODO: where to put lock in scheduler?
     if (!setjmp(current->buf)) {
         do {
             if (current->status == BLOCKED && traverse(current->dep)->status == EXITED) {
-                // current blocked but dependency has finished - CONTINUE RUNNING NOW
-
-                // current->value_ptr = &traverse(current->dep)->exit_code;
-                *(current->value_ptr) = *(traverse(current->dep)->exit_addr);
-                // printf("EXIT CODE ADDRESS FOR THREAD %d: %p\n", (unsigned)traverse(current->dep)->id, &traverse(current->dep)->exit_code);
-                // printf("EXIT CODE ADDRESS FOR THREAD %d: %p\n", (unsigned)traverse(current->dep)->id, traverse(current->dep)->exit_addr);
+                if (current->value_ptr && traverse(current->dep)->exit_addr)
+                    *(current->value_ptr) = *(traverse(current->dep)->exit_addr);
                 break;
             }
+
             if (current->status == RUNNING)
                 current->status = READY;
             current = current->next;
+
         } while (current->status == EXITED || current->status == BLOCKED);
 
         current->status = RUNNING;
         longjmp(current->buf, 1);
     }
+
     unlock();
 }
 
@@ -140,10 +145,8 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 void pthread_exit(void *value_ptr) {
     lock();
     current->status = EXITED;
-    // THIS IS WRONG - RETURNS ADDRESS IN NEWLY ALLOCATED TCB
-    // current->exit_code = value_ptr;        // save the return value for pthread_join
     current->exit_addr = &value_ptr;
-    free(current->stack - STACKSIZE + 8);  // TODO: free all TCB resources beside exit value - collected in pthread_join
+    free(current->stack - STACKSIZE + 8);
     unlock();
 
     scheduler(SIGALRM);
@@ -169,30 +172,18 @@ void unlock(void) {
 }
 
 int pthread_join(pthread_t thread, void **value_ptr) {
-    // postpone execution of calling thread till target thread terminates
-    // thread should be numerically away from head - just need to move up by that many in doubly linked list - traverse()
-    // IT WORKS - PTHREAD_JOIN isn't called again by the same thread until the last call returns. Therefore a list of dependencies doesn't build up - more like a mailbox
-
-    ante = traverse((unsigned)thread);
-
-    // printf("BLOCKING THREAD %d TILL THREAD %d is complete\n", (unsigned)current->id, (unsigned)ante->id);
-
-    if (ante->status == EXITED) {  // thread to join has exited
-        // value_ptr = &ante->exit_code;
-        *value_ptr = *(ante->exit_addr);
-        // printf("EXIT CODE ADDRESS FOR THREAD %d: %p\n", (unsigned)ante->id, ante->exit_code);
-        // printf("EXIT CODE ADDRESS FOR THREAD %d: %p\n", (unsigned)ante->id, *ante->exit_addr);
-
-        return 0;  // TODO: 0=successful - otherwise choose and return error values
-    } else {       // ante may be READY - can't be RUNNING - may be BLOCKED itself
+    if (traverse((unsigned)thread)->status == EXITED) {
+        if (value_ptr)
+            *value_ptr = *(traverse((unsigned)thread)->exit_addr);
+    } else {  // ante may be READY - can't be RUNNING - may be BLOCKED itself
         lock();
         current->dep = thread;
-        current->value_ptr = value_ptr;  // store for later
+        if (value_ptr)
+            current->value_ptr = value_ptr;
         current->status = BLOCKED;
         unlock();
         scheduler(SIGALRM);
     }
 
-    // use __builtin_unreachable() since might go to scheduler?
     return 0;
 }

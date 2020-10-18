@@ -39,6 +39,12 @@ typedef struct TCB {
     void **value_ptr;
 } TCB;
 
+typedef struct semaphore {
+    unsigned value;
+    struct semaphore *queue;
+    bool init;
+} semaphore;
+
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void *), void *arg);
 void pthread_exit(void *value_ptr);
 pthread_t pthread_self(void);
@@ -49,9 +55,9 @@ void unlock(void);
 
 int pthread_join(pthread_t thread, void **value_ptr);
 
-// int sem_init(sem_t *sem, int pshared, unsigned value);
-// int sem_wait(sem_t *sem);
-// int sem_post(sem_t *sem);
-// int sem_destroy(sem_t *sem);
+int sem_init(sem_t *sem, int pshared, unsigned value);
+int sem_wait(sem_t *sem);
+int sem_post(sem_t *sem);
+int sem_destroy(sem_t *sem);
 
 #endif /* THREADS_H */
