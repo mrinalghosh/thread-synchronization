@@ -98,13 +98,19 @@ int main(int argc, char** argv) {
     sem_init(&full, 0, 0);
     sem_init(&mutex, 0, 1);
 
-    for (i = 0; i < PRODUCER_COUNT; i++) {
+    // create consumers and producers
+    for (i = 0; i < PRODUCER_COUNT; ++i)
         pthread_create(&producer_threads[i], NULL, producer, NULL);
-    }
 
-    for (i = 0; i < CONSUMER_COUNT; i++) {
+    for (i = 0; i < CONSUMER_COUNT; ++i)
         pthread_create(&consumer_threads[i], NULL, consumer, NULL);
-    }
+
+    // join to ensure main does not exit
+    for (i = 0; i < PRODUCER_COUNT; ++i)
+        pthread_join(producer_threads[i], NULL);
+
+    for (i = 0; i < CONSUMER_COUNT; ++i)
+        pthread_join(consumer_threads[i], NULL);
 
     return 0;
 }
