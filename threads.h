@@ -33,15 +33,19 @@ typedef struct TCB {
     State status;
     struct TCB *next;
     struct TCB *prev;
-    void *exit_code;  // return value in pthread_exit
-    void **exit_addr;
-    pthread_t dep;  // thread join dependency
+    void **exit_address;
+    pthread_t ante;  // thread that must finish before this thread runs
     void **value_ptr;
 } TCB;
 
+typedef struct wait_queue {
+    TCB *tcb;
+    struct wait_queue *next;
+} wait_queue;
+
 typedef struct semaphore {
     unsigned value;
-    struct semaphore *queue;
+    struct wait_queue *queue;
     bool init;
 } semaphore;
 
