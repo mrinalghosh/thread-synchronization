@@ -50,7 +50,8 @@ int main(int argc, char** argv) {
 }
 */
 
-#define THREAD_COUNT 4
+#define PRODUCER_COUNT 1
+#define CONSUMER_COUNT 1
 #define N 8
 
 sem_t empty;
@@ -59,12 +60,15 @@ sem_t mutex;
 int i;         // for loop
 int item = 0;  // used instead of buffer
 
+static void hline(char* str) { printf("----------8<-------------[ %s ]----------\n", str); }
+
 void* producer(void* args) {  // must have this prototype for pthread_create
     while (true) {
+        hline("PRODUCER");
         sem_wait(&empty);  // empty.down()
         sem_wait(&mutex);  // mutex.down()
 
-        printf("tid: 0x%x Just added item %d (Now: %d)\n", (unsigned)pthread_self(), item, item+1);
+        printf("tid: 0x%x Just added an item to %d (Now: %d)\n", (unsigned)pthread_self(), item, item + 1);
         ++item;
 
         sem_post(&mutex);  // mutex.up()
@@ -72,29 +76,34 @@ void* producer(void* args) {  // must have this prototype for pthread_create
     }
 }
 
+void* consumer(void* args) {
+    while (true) {
+        hline("CONSUMER");
+        sem_wait(&full);   // full.down()
+        sem_wait(&mutex);  // mutex.down()
+
+        printf("tid: 0x%x Just removed an item from %d (Now: %d)\n", (unsigned)pthread_self(), item, item - 1);
+        --item;  // decrement item
+
+        sem_post(&mutex);  //mutex.up()
+        sem_post(&empty);  // empty.up()
+    }
+}
+
 int main(int argc, char** argv) {
-    pthread_t threads[THREAD_COUNT];
+    pthread_t producer_threads[PRODUCER_COUNT];
+    pthread_t consumer_threads[CONSUMER_COUNT];
 
     sem_init(&empty, 0, N);
     sem_init(&full, 0, 0);
     sem_init(&mutex, 0, 1);
 
-    for (i = 0; i < THREAD_COUNT; i++) {
-        pthread_create(&threads[i], NULL, producer, NULL);
+    for (i = 0; i < PRODUCER_COUNT; i++) {
+        pthread_create(&producer_threads[i], NULL, producer, NULL);
     }
 
-    // CONSUMER
-    while (true) {
-        sem_wait(&full);   // full.down()
-        sem_wait(&mutex);  // mutex.down()
-
-        printf("tid: 0x%x Just removed item %d (Now: %d)\n", (unsigned)pthread_self(), item, item-1);
-        --item; // decrement item
-
-        sem_post(&mutex);  //mutex.up()
-        sem_post(&empty);  // empty.up()
-
-        // consume item
+    for (i = 0; i < CONSUMER_COUNT; i++) {
+        pthread_create(&consumer_threads[i], NULL, consumer, NULL);
     }
 
     return 0;

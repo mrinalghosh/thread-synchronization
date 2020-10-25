@@ -73,8 +73,9 @@ int sem_init(sem_t *sem, int pshared, unsigned value) {  // pshared const 0
 int sem_wait(sem_t *sem) {
     lock();
     semaphore *s = (semaphore *)sem->__align;  // dereference semaphore from address in __align
-    if (s->value == 0) {                       //TODO: block when semaphore val == 0 until possible to decrement
-        current->status = BLOCKED;             //TODO: might need a different status when not blocked by pthread_join?
+    // printf("semaphore.down(%d)\n", s->value);
+    if (s->value == 0) {            //TODO: block when semaphore val == 0 until possible to decrement
+        current->status = BLOCKED;  //TODO: might need a different status when not blocked by pthread_join?
 
         wait_queue *nq = (wait_queue *)calloc(1, sizeof(wait_queue));  // allocate new queue
 
@@ -89,6 +90,7 @@ int sem_wait(sem_t *sem) {
                 temp = temp->next;  // increment to end of queue
             }
             temp->next = nq;
+            nq->next = NULL;
         }
         unlock();            // since not returning to function
         scheduler(SIGALRM);  // SCHEDULE NOW - Camden
@@ -103,8 +105,8 @@ int sem_post(sem_t *sem) {
     lock();
     semaphore *s = (semaphore *)sem->__align;
     // CURRENT THREAD CAN'T be blocked - it called sem_post in the first place
+    // printf("semaphore.up(%d)\n", s->value);
     if (!s->value) {  // semaphore value = 0
-
         // will become greater than zero now - another thread blocked in sem_wait can be woken up
         // increment unless another thread is found to unblock
 
@@ -124,7 +126,7 @@ int sem_post(sem_t *sem) {
             wait_queue *temp = s->queue;  // point to first wait_queue
             s->queue = s->queue->next;    // remove and free first in queue
             free(temp);
-            scheduler(SIGALRM);
+            // scheduler(SIGALRM); // not calling scheduler otherwise runs for just one cycle
 
         } else {           // NOT WAKING UP THREAD - can increment and unlock
             ++(s->value);  // increments semaphore value - unless another thread is woken up!!!
@@ -141,13 +143,16 @@ int sem_destroy(sem_t *sem) {
     wait_queue *temp = s->queue;
     // free semaphore queues
     if (temp) {  // queue not NULL
-        while (temp->next != NULL) {
-            free(s->queue);         // free first in wait_queue
-            s->queue = temp;        // restore value of queue from temp
-            temp = s->queue->next;  // temp points to next queue element, s->queue points to current element
+        if (temp->next != NULL) {
+            temp = temp->next;
+            while (temp->next != NULL) {
+                free(s->queue);         // free first in wait_queue
+                s->queue = temp;        // restore value of queue from temp
+                temp = s->queue->next;  // temp points to next queue element, s->queue points to current element
+            }
+            free(s->queue);  // finally dobby is a free elf
+            //TODO: make sure this works with single element case
         }
-        free(s->queue);  // finally dobby is a free elf
-        //TODO: make sure this works with single element case
     }
     free(s);
     unlock();
