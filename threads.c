@@ -8,18 +8,13 @@
 
 #include "ec440threads.h"
 
-/*
-TODO: 
-semaphores
-*/
-
 int i;  // iteration variable
 int thread_count = 0;
 TCB *head = NULL;
 TCB *current = NULL;
 sigset_t mask;
 
-// static void hline(void) { printf("----------8<-------------[ cut here ]----------\n"); }
+static void hline(void) { printf("\n->->->->->->->->-A L A R M->->->->->->->->->-\n\n"); }
 
 static TCB *traverse(int n) {
     TCB *temp = head;
@@ -142,7 +137,7 @@ int sem_destroy(sem_t *sem) {
     semaphore *s = (semaphore *)sem->__align;
     wait_queue *temp = s->queue;
     // free semaphore queues
-    if (temp) {  // queue not NULL
+    if (temp != NULL) {  // queue not NULL
         if (temp->next != NULL) {
             temp = temp->next;
             while (temp->next != NULL) {
@@ -152,6 +147,8 @@ int sem_destroy(sem_t *sem) {
             }
             free(s->queue);  // finally dobby is a free elf
             //TODO: make sure this works with single element case
+        } else {
+            free(s->queue);
         }
     }
     free(s);
@@ -160,7 +157,7 @@ int sem_destroy(sem_t *sem) {
 }
 
 void scheduler(int signum) {
-    // hline();
+    hline();
     lock();
 
     if (!setjmp(current->buf)) {
