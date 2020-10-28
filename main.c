@@ -48,47 +48,56 @@ sem_t full;
 sem_t mutex;
 int i;         // for loop
 int item = 0;  // used instead of buffer
+int limit = 0;
 
 static void hline(char* str) { printf("\n----------8<-------------[ %s %x ]----------\n", str, (unsigned)pthread_self()); }
 
 void* producer(void* args) {  // must have this prototype for pthread_create
-    while (true) {
+    while (limit < N * 10) {
         hline("PRODUCER");
-        printf("P: empty.down() called\n");
+        // printf("P: empty.down() called");
         sem_wait(&empty);  // empty.down()
-        printf("P: mutex.down() called\n");
+        // printf("P: mutex.down() called");
         sem_wait(&mutex);  // mutex.down()
 
         printf("Producer %x Just added an item to %d (Now: %d)\n", (unsigned)pthread_self(), item, item + 1);
         ++item;
 
-        printf("P: mutex.up() called\n");
+        // printf("P: mutex.up() called");
         sem_post(&mutex);  // mutex.up()
-        printf("P: full.up() called\n");
-        sem_post(&full);   // full.up()
+        // printf("P: full.up() called");
+        sem_post(&full);  // full.up()
+        ++limit;
     }
+    return NULL;
 }
 
 void* consumer(void* args) {
-    while (true) {
+    while (limit < N * 10) {
         hline("CONSUMER");
-        printf("C: full.down() called\n");
-        sem_wait(&full);   // full.down()
-        printf("C: mutex.down() called\n");
+        // printf("C: full.down() called");
+        sem_wait(&full);  // full.down()
+        // printf("C: mutex.down() called");
         sem_wait(&mutex);  // mutex.down()
 
         printf("Consumer %x Just removed an item from %d (Now: %d)\n", (unsigned)pthread_self(), item, item - 1);
         --item;  // decrement item
 
-        printf("C: mutex.up() called\n");
+        // printf("C: mutex.up() called");
         sem_post(&mutex);  //mutex.up()
-        printf("C: empty.up() called\n");
+        // printf("C: empty.up() called");
         sem_post(&empty);  // empty.up()
+        ++limit;
     }
+    return NULL;
 }
 
 int main(int argc, char** argv) {
     pthread_t threads[PRODUCER_COUNT + CONSUMER_COUNT];
+    void* value_ptr[PRODUCER_COUNT + CONSUMER_COUNT];
+
+    for (i = 0; i < PRODUCER_COUNT + CONSUMER_COUNT; ++i)
+        value_ptr[i] = malloc(sizeof(int*));
 
     sem_init(&empty, 0, N);
     sem_init(&full, 0, 0);
@@ -103,10 +112,17 @@ int main(int argc, char** argv) {
 
     // join to ensure main does not exit
     for (i = 0; i < PRODUCER_COUNT; ++i)
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], value_ptr[i]);
 
     for (i = PRODUCER_COUNT; i < PRODUCER_COUNT + CONSUMER_COUNT; ++i)
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], value_ptr[i]);
+
+    // print return values
+    for (i = 0; i < PRODUCER_COUNT; ++i)
+        printf("Producer %d exited with return code %d \n", i + 1, *(int*)value_ptr[i]);
+
+    for (i = PRODUCER_COUNT; i < PRODUCER_COUNT + CONSUMER_COUNT; ++i)
+        printf("Consumer %d exited with return code %d \n", i + 1, *(int*)value_ptr[i]);
 
     return 0;
 }

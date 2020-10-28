@@ -24,6 +24,7 @@ typedef enum State {
     READY,
     EXITED,
     BLOCKED,
+    SEMAPHORE_BLOCKED,
 } State;
 
 typedef struct TCB {
@@ -33,8 +34,8 @@ typedef struct TCB {
     State status;
     struct TCB *next;
     struct TCB *prev;
-    void **exit_address;
-    pthread_t ante;  // thread that must finish before this thread runs
+    void *exit_value;
+    pthread_t ante;
     void **value_ptr;
 } TCB;
 

@@ -1,11 +1,45 @@
+EC440 Introduction to Operating Systems
+Project 3
+Mrinal Ghosh (U33402990)
+
+Description:
+This project implements thread synchronization functions specified by the semaphore.h and pthread.h reference APIs. Building off functions implemented in Project 2 (pthread_create, pthread_exit, pthread_self, scheduler), the following functions were implemented for this assignment.
+
+lock() & unlock():
+The basic locking mechanism was designed with the alarm-signal based scheduler previously created. By using signal masks that can either ignore or restore access to SIGALRM, we can prevent global memory accesses in multiple concurrent threads by allowing a memory-access to proceed to completion before yeilding to another thread.
+
+pthread_join():
+This function postpones execution of the calling thread until the target thread has terminated.
+- In pthread_exit_wrapper, the exit code of every thread is moved such that it is the 'value_ptr' argument to pthread_exit
+- pthread_exit moves this argument to a field in the TCB structure of the exiting thread (this is accessed later)
+- If the calling thread checks if the target thread has already exited - if so it assigns the argument 'value_ptr' to the exit code of the target thread
+- Else, the calling thread is marked as BLOCKED and its antecedent/dependency is store in its TCB. This is used to check later if the (still running) target thread has exited
+- scheduler is called in order to move to a non-blocked thread. Whenever a BLOCKED thread is next, we check if the 'ante' has exited. If so, we can continue running that thread.
+- In the case of an ante exit, we continue execution from pthread_join() after the explicit scheduler call - here we store the exit value in the value_ptr of pthread_join
+
+sem_init():
+This functions initializes an unnamed argument semaphore passed in from another program. In order to store all the desired values in the sem_t structure from semaphore.h, I created a new type 'semaphore' and gave it 'value', 'queue' and 'init' fields. I calloc a pointer to a new 'semaphore' and set the 'value' set to the function argument value. 'queue' is initialized as null and would eventually be a queue of currently blocked threads waiting on a semaphore. 'init' was set to true but not used elsewhere in this assignment. This 'semaphore *' is statically cast as a long int and stored in the sem_t->__align field.
+
+sem_wait():
+This function provides the behaviour of sem.down(). First we reference the 'semaphore' contained in sem_t->__align. We lock since this semaphore is itself in global memory. If the semaphore value is currently 0, then the calling thread (current) changes status to SEMAPHORE_BLOCKED (this was chosen as the BLOCKED status has specific checks in the scheduler). This blocked thread is moved to the end of the waiting queue for the semaphore. We unlock and call the scheduler in order to prevent this SEMAPHORE_BLOCKED thread from wasting its remaining quantum. Since becoming blocked here, when the scheduler eventually returns to the SEMAPHORE_BLOCKED thread, we will come back to the end of sem_wait, where the value decrements and returns. 
+
+sem_post():
+This function acts like sem.up(). Again we reference the 'semaphore' contained in sem_t->__align and lock. If the value is currently zero, it means that there must have been at least one SEMAPHORE_BLOCKED thread that can be run again. We set this thread to READY and remove it from the semaphore queue. Finally we increment the value in the 'semaphore' and return.
+
+sem_destroy():
+This function destroys the dynamically allocated (in sem_init) semaphore passed to it. In order to do this, we free the queue (even though this is undefined) and then the entire semaphore structure.
+
 Updates from HW2:
-- removed decrement thread - threads are now globally unique once declared - ids no longer reused
-    - does 128 MAX threads mean concurrent running threads or total declared threads?   RUNNING threads
-- OF COURSE - I HAD TO MOVE THE STACK POINTER BACK DOWN TO WHERE IT WAS ALLOCATED TO FREE IT
+- removed decrement thread_count, thread ids are now globally unique once declared.
+- handled freeing allocated stacks
+- added lock and unlock to pthread_x from HW2, since they access global memory.
 
 [Sources]
 
-manpages, Lectures, GDB cheat sheet, Piazza, whereis
+manpages, Lectures, GDB cheat sheet, Piazza
+
+timeout: (for testing)
+https://www.howtogeek.com/423286/how-to-use-the-timeout-command-on-linux/#:~:text=The%20exit%20code%20is%20124,code%20from%20timeout%20is%20zero.
 
 struct:
 https://stackoverflow.com/questions/19668681/typedef-a-struct-to-a-point-with-the-same-name-as-the-struct

@@ -8,13 +8,11 @@
 
 #include "ec440threads.h"
 
-int i;  // iteration variable
+int i;
 int thread_count = 0;
 TCB *head = NULL;
 TCB *current = NULL;
 sigset_t mask;
-
-static void hline(void) { printf("\n->->->->->->->->-A L A R M->->->->->->->->->-\n\n"); }
 
 static TCB *traverse(int n) {
     TCB *temp = head;
@@ -39,7 +37,6 @@ static void thread_init(void) {
     mt->prev = mt;
     mt->status = RUNNING;
     mt->id = (pthread_t)thread_count;
-    mt->exit_address = NULL;
 
     setjmp(mt->buf);
 
@@ -56,42 +53,37 @@ static void thread_init(void) {
     ++thread_count;
 }
 
-int sem_init(sem_t *sem, int pshared, unsigned value) {  // pshared const 0
+int sem_init(sem_t *sem, int pshared, unsigned value) {
     semaphore *ns = (semaphore *)calloc(1, sizeof(semaphore));
     ns->value = value;
     ns->queue = NULL;
     ns->init = true;
     sem->__align = (long)ns;
-    return 0;  // if successful - error codes?
+    return 0;
 }
 
 int sem_wait(sem_t *sem) {
     lock();
-    semaphore *s = (semaphore *)sem->__align;  // dereference semaphore from address in __align
-    // printf("semaphore.down(%d)\n", s->value);
-    if (s->value == 0) {            //TODO: block when semaphore val == 0 until possible to decrement
-        current->status = BLOCKED;  //TODO: might need a different status when not blocked by pthread_join?
+    semaphore *s = (semaphore *)sem->__align;
+    if (s->value == 0) {  // block until possible to decrement
+        wait_queue *nq = (wait_queue *)calloc(1, sizeof(wait_queue));
+        nq->tcb = current;
+        nq->next = NULL;
 
-        wait_queue *nq = (wait_queue *)calloc(1, sizeof(wait_queue));  // allocate new queue
-
-        nq->tcb = current;  // point to current TCB that is now blocked
-        nq->next = NULL;    // at the end of current queue of semaphores
-
-        if (s->queue == NULL) {  // NULL - nothing in sem's queue - put in first position
-            s->queue = nq;       // make first term in queue
-        } else {                 // if queue exists - put at end of sem queue
+        if (s->queue == NULL) {  // empty queue
+            s->queue = nq;
+        } else {  //  queue exists
             wait_queue *temp = s->queue;
             while (temp->next != NULL) {
-                temp = temp->next;  // increment to end of queue
+                temp = temp->next;
             }
             temp->next = nq;
-            nq->next = NULL;
         }
-        unlock();            // since not returning to function
-        scheduler(SIGALRM);  // SCHEDULE NOW - Camden
-    } else {
-        --(s->value);  // DOESN'T MATTER - SCHEDULES OUT OF FUNCTION ABOVE
+        current->status = SEMAPHORE_BLOCKED;
+        unlock();
+        scheduler(SIGALRM);
     }
+    --(s->value);
     unlock();
     return 0;
 }
@@ -99,36 +91,16 @@ int sem_wait(sem_t *sem) {
 int sem_post(sem_t *sem) {
     lock();
     semaphore *s = (semaphore *)sem->__align;
-    // CURRENT THREAD CAN'T be blocked - it called sem_post in the first place
-    // printf("semaphore.up(%d)\n", s->value);
-    if (!s->value) {  // semaphore value = 0
-        // will become greater than zero now - another thread blocked in sem_wait can be woken up
-        // increment unless another thread is found to unblock
-
-        if (s->queue != NULL) {  // assuming queue is FIFO - first thread blocked by sem resumes
-
-            //TODO: actively or passively 'wake up' thread first waiting thread
-            s->queue->tcb->prev->next = s->queue->tcb->next;
-            s->queue->tcb->next->prev = s->queue->tcb->prev;
-
-            current->next->prev = s->queue->tcb;  // current->next->prev = target
-            s->queue->tcb->prev = current;        // target->prev = current
-            s->queue->tcb->next = current->next;  // target->next = current->next
-            current->next = s->queue->tcb;        // current->next = target
-
+    if (s->value == 0) {
+        if (s->queue != NULL) {
             s->queue->tcb->status = READY;
-
-            wait_queue *temp = s->queue;  // point to first wait_queue
-            s->queue = s->queue->next;    // remove and free first in queue
+            wait_queue *temp = s->queue;  // remove and free first queue element
+            s->queue = s->queue->next;
             free(temp);
-            // scheduler(SIGALRM); // not calling scheduler otherwise runs for just one cycle
-
-        } else {           // NOT WAKING UP THREAD - can increment and unlock
-            ++(s->value);  // increments semaphore value - unless another thread is woken up!!!
-            unlock();
         }
     }
-    // shouldn't schedule here
+    ++(s->value);
+    unlock();
     return 0;
 }
 
@@ -136,17 +108,15 @@ int sem_destroy(sem_t *sem) {
     lock();
     semaphore *s = (semaphore *)sem->__align;
     wait_queue *temp = s->queue;
-    // free semaphore queues
-    if (temp != NULL) {  // queue not NULL
+    if (temp != NULL) {
         if (temp->next != NULL) {
             temp = temp->next;
             while (temp->next != NULL) {
-                free(s->queue);         // free first in wait_queue
-                s->queue = temp;        // restore value of queue from temp
-                temp = s->queue->next;  // temp points to next queue element, s->queue points to current element
+                free(s->queue);  // undefined behaviour in spec
+                s->queue = temp;
+                temp = s->queue->next;
             }
             free(s->queue);  // finally dobby is a free elf
-            //TODO: make sure this works with single element case
         } else {
             free(s->queue);
         }
@@ -157,26 +127,21 @@ int sem_destroy(sem_t *sem) {
 }
 
 void scheduler(int signum) {
-    hline();
     lock();
-
     if (!setjmp(current->buf)) {
         do {
-            if (current->status == BLOCKED && traverse(current->ante)->status == EXITED) {
-                if (current->value_ptr && traverse(current->ante)->exit_address)
-                    *(current->value_ptr) = *(traverse(current->ante)->exit_address);
+            if (current->status == BLOCKED && traverse(current->ante)->status == EXITED)
                 break;
-            }
-            if (current->status == RUNNING) {
+
+            if (current->status == RUNNING)
                 current->status = READY;
-            }
+
             current = current->next;
-        } while (current->status == EXITED || current->status == BLOCKED);
+        } while (current->status == EXITED || current->status == BLOCKED || current->status == SEMAPHORE_BLOCKED);
 
         current->status = RUNNING;
         longjmp(current->buf, 1);
     }
-
     unlock();
 }
 
@@ -197,15 +162,13 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
     new_thread->next = head;
     new_thread->status = READY;
     new_thread->id = (pthread_t)thread_count;
-    *thread = (pthread_t)thread_count;  // write to arg thread - used in pthread_join
-
-    new_thread->exit_address = NULL;
+    *thread = (pthread_t)thread_count;
 
     setjmp(new_thread->buf);
 
     new_thread->stack = calloc(1, STACKSIZE);
     new_thread->stack = new_thread->stack + STACKSIZE - 8;
-    *(unsigned long *)new_thread->stack = (unsigned long)pthread_exit_wrapper;  // replaced pthread_exit
+    *(unsigned long *)new_thread->stack = (unsigned long)pthread_exit_wrapper;
 
     new_thread->buf[0].__jmpbuf[JB_R12] = (unsigned long)start_routine;
     new_thread->buf[0].__jmpbuf[JB_R13] = (unsigned long)arg;
@@ -219,7 +182,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 void pthread_exit(void *value_ptr) {
     lock();
     current->status = EXITED;
-    current->exit_address = &value_ptr;
+    current->exit_value = value_ptr;
     free(current->stack - STACKSIZE + 8);
     unlock();
 
@@ -239,7 +202,7 @@ void lock(void) {  // needs to be called to protect accesses to global data stru
 }
 
 void unlock(void) {
-    if (sigprocmask(SIG_UNBLOCK, &mask, NULL) < 0) {  // or SIG_SETMASK
+    if (sigprocmask(SIG_UNBLOCK, &mask, NULL) < 0) {
         perror("sigprocmask");
         exit(1);
     }
@@ -248,8 +211,8 @@ void unlock(void) {
 int pthread_join(pthread_t thread, void **value_ptr) {
     if (traverse((unsigned)thread)->status == EXITED) {
         if (value_ptr)
-            *value_ptr = *(traverse((unsigned)thread)->exit_address);
-    } else {  // ante may be READY - can't be RUNNING - may be BLOCKED itself
+            *value_ptr = traverse((unsigned)thread)->exit_value;
+    } else {
         lock();
         current->ante = thread;
         if (value_ptr)
@@ -257,6 +220,7 @@ int pthread_join(pthread_t thread, void **value_ptr) {
         current->status = BLOCKED;
         unlock();
         scheduler(SIGALRM);
+        *value_ptr = traverse((unsigned)thread)->exit_value;  // after current thread is chosen in scheduler - longjmps back here.
     }
 
     return 0;
