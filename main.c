@@ -39,8 +39,8 @@ int main(int argc, char **argv) {
 }
 */
 
-#define PRODUCER_COUNT 1
-#define CONSUMER_COUNT 1
+#define PRODUCER_COUNT 2
+#define CONSUMER_COUNT 2
 #define N 8
 
 sem_t empty;

@@ -66,6 +66,8 @@ int sem_wait(sem_t *sem) {
     lock();
     semaphore *s = (semaphore *)sem->__align;
     if (s->value == 0) {  // block until possible to decrement
+        current->status = SEMAPHORE_BLOCKED;
+
         wait_queue *nq = (wait_queue *)calloc(1, sizeof(wait_queue));
         nq->tcb = current;
         nq->next = NULL;
@@ -79,7 +81,6 @@ int sem_wait(sem_t *sem) {
             }
             temp->next = nq;
         }
-        current->status = SEMAPHORE_BLOCKED;
         unlock();
         scheduler(SIGALRM);
     }
@@ -220,7 +221,8 @@ int pthread_join(pthread_t thread, void **value_ptr) {
         current->status = BLOCKED;
         unlock();
         scheduler(SIGALRM);
-        *value_ptr = traverse((unsigned)thread)->exit_value;  // after current thread is chosen in scheduler - longjmps back here.
+        if (value_ptr)
+            *value_ptr = traverse((unsigned)thread)->exit_value;  // after current thread is chosen in scheduler - longjmps back here.
     }
 
     return 0;
