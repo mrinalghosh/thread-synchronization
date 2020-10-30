@@ -36,7 +36,6 @@ typedef struct TCB {
     struct TCB *prev;
     void *exit_value;
     pthread_t ante;
-    void **value_ptr;
 } TCB;
 
 typedef struct wait_queue {

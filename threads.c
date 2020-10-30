@@ -65,16 +65,16 @@ int sem_init(sem_t *sem, int pshared, unsigned value) {
 int sem_wait(sem_t *sem) {
     lock();
     semaphore *s = (semaphore *)sem->__align;
-    if (s->value == 0) {  // block until possible to decrement
+    if (s->value == 0) {
         current->status = SEMAPHORE_BLOCKED;
 
         wait_queue *nq = (wait_queue *)calloc(1, sizeof(wait_queue));
         nq->tcb = current;
         nq->next = NULL;
 
-        if (s->queue == NULL) {  // empty queue
+        if (s->queue == NULL) {
             s->queue = nq;
-        } else {  //  queue exists
+        } else {
             wait_queue *temp = s->queue;
             while (temp->next != NULL) {
                 temp = temp->next;
@@ -95,7 +95,7 @@ int sem_post(sem_t *sem) {
     if (s->value == 0) {
         if (s->queue != NULL) {
             s->queue->tcb->status = READY;
-            wait_queue *temp = s->queue;  // remove and free first queue element
+            wait_queue *temp = s->queue;
             s->queue = s->queue->next;
             free(temp);
         }
@@ -113,11 +113,11 @@ int sem_destroy(sem_t *sem) {
         if (temp->next != NULL) {
             temp = temp->next;
             while (temp->next != NULL) {
-                free(s->queue);  // undefined behaviour in spec
+                free(s->queue);
                 s->queue = temp;
                 temp = s->queue->next;
             }
-            free(s->queue);  // finally dobby is a free elf
+            free(s->queue);
         } else {
             free(s->queue);
         }
@@ -193,7 +193,7 @@ void pthread_exit(void *value_ptr) {
 
 pthread_t pthread_self(void) { return current->id; }
 
-void lock(void) {  // needs to be called to protect accesses to global data structures
+void lock(void) {
     sigemptyset(&mask);
     sigaddset(&mask, SIGALRM);
     if (sigprocmask(SIG_BLOCK, &mask, NULL) < 0) {
@@ -216,13 +216,11 @@ int pthread_join(pthread_t thread, void **value_ptr) {
     } else {
         lock();
         current->ante = thread;
-        if (value_ptr)
-            current->value_ptr = value_ptr;
         current->status = BLOCKED;
         unlock();
         scheduler(SIGALRM);
         if (value_ptr)
-            *value_ptr = traverse((unsigned)thread)->exit_value;  // after current thread is chosen in scheduler - longjmps back here.
+            *value_ptr = traverse((unsigned)thread)->exit_value;
     }
 
     return 0;
